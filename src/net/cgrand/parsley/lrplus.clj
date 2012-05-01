@@ -21,7 +21,7 @@
 
 ;; pushdown automaton
 (defrecord TableState [token-matcher reduce gotos accept eof])
-(defn table-state [shifts reduce goto accept & [eof]] 
+(defn table-state [shifts reduce goto accept & [eof]]
   (assoc (TableState. nil reduce goto accept eof) :shifts shifts))
 
 (def ^{:const true} incomplete [-1])
@@ -52,7 +52,7 @@
         (fn [^String s eof]
           (cond
             (.startsWith s this)
-              [n id] 
+              [n id]
           eof
             nil
           (.startsWith this s)
@@ -65,7 +65,7 @@
           (cond
             (and (not eof) (.hitEnd m))
               incomplete
-            found 
+            found
               [(.end m) id]))))
   clojure.lang.IFn ; TODO fix
     (matcher-fn [this id]
@@ -83,7 +83,7 @@
               m (aget matchers i)
               mr (m s eof)]
         (identical? incomplete mr) incomplete
-        (and r mr) 
+        (and r mr)
           (throw (Exception. (str "Ambiguous match for " (pr-str s) " by " (pr-str (seq matchers)))))
         (recur i (or r mr)))))))
 
@@ -95,8 +95,8 @@
 
 (defn- matchers-union [matchers]
   (let [qtable (to-array
-                 (map (fn [cp] 
-                        (let [s (str (char cp)) 
+                 (map (fn [cp]
+                        (let [s (str (char cp))
                               ms (keep #(prefix-matcher % s) matchers)]
                           (when (seq ms)
                             (if (next ms)
@@ -125,14 +125,14 @@
 
 (defn- count-unexpected [tm s eof]
   (loop [n 1]
-    (let [suf (subs s n)] 
+    (let [suf (subs s n)]
       (if (or (tm suf eof) (empty? suf))
         n
         (recur (inc n))))))
 
 (defn step1
   "Returns [stack water-mark buffer events] where stack is the new stack,
-   water-mark the number of items at the bottom of the stack which didn't took 
+   water-mark the number of items at the bottom of the stack which didn't took
    part in this step, buffer the remaining string to be tokenized, events the
    parsing events."
  [^objects table ops stack rem s]
@@ -147,7 +147,7 @@
       (u/cond
         :when-let [state (st/peek! stack)
                    cs (aget table state)]
-        [[sym n tag] (and (zero? (.length s)) (:accept cs))] 
+        [[sym n tag] (and (zero? (.length s)) (:accept cs))]
           (if eof
             (do
               (f/node! fq tag n)
@@ -173,7 +173,7 @@
             (recur (subs s n)))
         ; unexpected eof
         (let [[sym n tag] (:eof cs)
-              cs (-> stack (st/popN! n) st/peek! table)
+              cs (aget table (-> stack (st/popN! n) st/peek!))
               _ (f/node! fq tag n)]
           (st/push! stack (aget ^objects (:gotos cs) sym))
           (recur s))))))
@@ -182,7 +182,7 @@
 
 (defn step [table ops state s]
   (u/when-let [[[stack rem :as start]] state
-               [{:keys [watermark stack]} rem events] 
+               [{:keys [watermark stack]} rem events]
                  (step1 table ops stack rem s)]
     [[stack rem] watermark events start]))
 
@@ -190,7 +190,7 @@
 (defn close [init-states state]
   (u/fix-point (fn [state]
                (let [follows (map #(first (nth % 2)) state)]
-                 (into state (mapcat init-states follows)))) 
+                 (into state (mapcat init-states follows))))
     (set state)))
 
 (defn filter-keys [map pred]
@@ -210,7 +210,7 @@
           reduces (reduce disj reduces accepts)
           reduction (when-let [[sym n] (first reduces)] [sym n (tags sym)])
           accept (when-let [[sym n] (first accepts)] [sym -1 (tags sym)])]
-    (next reduces) 
+    (next reduces)
       (throw (Exception. ^String (apply str "at state " state "\n  reduce/reduce conflict " (interpose "\n" reduces))))
     (and reduction (seq shifts))
       (throw (Exception. (str "at state " state "\n shift/reduce conflict " shifts "\n" reduces)))
@@ -220,7 +220,7 @@
   (concat (vals gotos) (vals shifts)))
 
 (defn lr-table [[grammar tags matches-empty]]
-  (let [grammar (-> grammar (dissoc ::p/S) 
+  (let [grammar (-> grammar (dissoc ::p/S)
                   (assoc 0 (::p/S grammar)))
         tags (assoc tags 0 (tags ::p/S))
         init-states (u/map-vals grammar #(set (for [prod %2] [%1 (count prod) prod])))
@@ -251,7 +251,7 @@
   (let [state #{[::p/unfinished (inc n) nil]}
         state-id [::p/unfinished (boolean public) (boolean accept) n]
         transitions (transitions identity (if public #{::p/unfinished} #{}) state)
-        transitions (if accept 
+        transitions (if accept
                       (assoc transitions :accept [::p/unfinished -1 ::p/unfinished])
                       transitions)]
     [state-id transitions]))
@@ -261,9 +261,9 @@
   ;; that's why the tags map is recomputed
   (let [tags (into {} (for [transition (vals table)
                             :let [[k _ tag] (or (:reduce transition) (:accept transition))]
-                            :when tag] 
+                            :when tag]
                         [k tag]))]
-    (reduce 
+    (reduce
       (fn [table [state transition]]
         (u/cond
           (:reduce transition)
@@ -289,12 +289,12 @@
         table-without-start (dissoc table 0)
         mapping (zipmap (cons 0 (keys table-without-start)) (range))
         renum (fn [m] (reduce #(update-in %1 [%2] mapping) m (keys m)))
-        
+
         ; compute matchers which return the shifted state id
         token-matcher (memoize
                         (fn [shifts]
                           (matcher (keys shifts) (comp mapping shifts))))
-        
+
         syms (set (for [v (vals table) [x] [(:reduce v) (:eof v) (:accept v)] :when x] x))
         syms-mapping (zipmap syms (range))
         renum-action #(when-let [[sym n tag] %] [(syms-mapping sym) n tag])
@@ -303,7 +303,7 @@
                                             (assoc goto (syms-mapping sym) state))
                                        empty-goto goto))]
     (to-array
-      (for [{shifts :shifts gotos :gotos :as v} 
+      (for [{shifts :shifts gotos :gotos :as v}
             (cons (get table 0) (vals table-without-start))]
         (-> v
           (dissoc :shifts)
@@ -314,13 +314,13 @@
                :gotos (-> gotos renum renum-gotosyms to-array)))))))
 
 (comment
-    (def g 
+    (def g
       {:E #{["(" :E+ ")"]
             [#"\w+"]}
        :E+ #{[:E+ :E]
              [:E]}})
-  
+
     (let [t (lr-table [g :E identity])]
       (step t zero "((hello)"))
-    
+
 )
